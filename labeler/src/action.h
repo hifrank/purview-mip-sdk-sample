@@ -22,6 +22,8 @@ public:
 
     void ListLabels();
 
+    void ListPolicies();
+
     void SetLabel(const std::string& inputFilePath,
                   const std::string& outputFilePath,
                   const std::string& labelId);
@@ -30,6 +32,9 @@ public:
 
     void RemoveLabel(const std::string& inputFilePath,
                      const std::string& outputFilePath);
+
+    /// Decrypt a protected file and write raw bytes to stdout (in-memory only).
+    void DecryptToStdout(const std::string& filePath);
 
 private:
     std::shared_ptr<mip::FileHandler> CreateFileHandler(const std::string& filePath);

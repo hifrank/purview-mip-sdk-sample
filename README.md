@@ -2,8 +2,9 @@
 
 A two-part sample demonstrating Microsoft Information Protection (MIP) capabilities:
 
-1. **Labeler** (C++) — Apply a sensitivity label to a `.txt` file using the MIP File SDK
-2. **Scanner** (Python) — Scan file content against Purview data protection policies using the Microsoft Graph `processContent` API
+1. **MIP SDK CLI** (C++) — Apply, read, remove, and decrypt sensitivity labels on files using the MIP File SDK
+2. **MCP Server** (Python) — Exposes MIP-protected document reading as tools for AI assistants (GitHub Copilot, Claude, etc.)
+3. **Scanner** (Python) — Scan file content against Purview data protection policies using the Microsoft Graph `processContent` API
 
 The two parts are connected: the scanner reads the labeled file output from the labeler and evaluates it against configured policies.
 
@@ -26,10 +27,18 @@ Register an app in [Microsoft Entra ID](https://portal.azure.com/#blade/Microsof
 
 1. **Supported account types**: Accounts in this organizational directory only
 2. **Redirect URI**: Public client — `http://localhost`
-3. **API Permissions** (all Delegated unless noted):
+3. **API Permissions**:
+
+   **Delegated permissions:**
    - `Azure Rights Management Services` → `user_impersonation`
    - `Microsoft Information Protection Sync Service` → `UnifiedPolicy.User.Read`
-   - `Microsoft Graph` → `Content.Process.User` or `Content.Process.All` (Application)
+
+   **Application permissions:**
+   - `Azure Rights Management Services` → `Content.SuperUser` (read all protected content)
+   - `Azure Rights Management Services` → `Content.Writer` (create protected content)
+   - `Azure Rights Management Services` → `Content.DelegatedWriter` (create protected content on behalf of a user)
+   - `Azure Rights Management Services` → `Content.DelegatedReader` (read protected content on behalf of a user)
+   - `Microsoft Graph` → `Content.Process.All` (for the Python scanner)
 4. **Grant admin consent** for all permissions
 5. Create a **Client Secret** (for the Python scanner)
 
@@ -51,26 +60,34 @@ cp .env.example .env
 
 ---
 
-## Part 1: C++ Labeler (MIP File SDK)
+## Part 1: C++ MIP SDK CLI
 
 ### Build
 
-The MIP SDK ships Linux x86-64 `.so` libraries, so the labeler must be built and run via Docker (even on macOS/Apple Silicon):
+**Native (macOS with MIP SDK):**
+
+```bash
+cd labeler
+mkdir -p build && cd build
+cmake -DMIP_SDK_PATH=/path/to/mip_sdk -DCOMPILE_ONLY=OFF ..
+cmake --build .
+# Executable: ./mip-sdk-cli
+```
+
+**Docker (Linux x86-64):**
 
 ```bash
 cd purview-mip-sdk-sample
-
-# Build the Docker image (--platform is required on Apple Silicon Macs)
-docker build --platform linux/amd64 -t mip-labeler -f labeler/Dockerfile .
+docker build --platform linux/amd64 -t mip-sdk-cli -f labeler/Dockerfile .
 ```
 
 ### Usage
 
-The labeler reads credentials from a `.env` file automatically, so you don't need to pass them on every command. Create your `.env` file first:
+The CLI reads credentials from a `.env` file automatically. Create your `.env` file first:
 
 ```bash
-cp labeler/.env.sample labeler/.env
-# Edit labeler/.env with your real values
+cp .env.example .env
+# Edit .env with your real values
 ```
 
 **`.env` file format:**
@@ -84,52 +101,117 @@ CLIENT_SECRET=your-client-secret
 USER_EMAIL=user@tenant.com
 ```
 
-The labeler looks for `.env` in the current directory by default. Use `--env <path>` to specify a different location. CLI arguments always override `.env` values.
+The CLI looks for `.env` in the current directory by default. Use `--env <path>` to specify a different location. CLI arguments always override `.env` values.
 
-Run the labeler via Docker, mounting your `.env` file and any input/output files:
+**Label commands:**
 
 ```bash
 # List available sensitivity labels
-docker run --rm --platform linux/amd64 \
-    -v "$(pwd)/labeler/.env:/app/.env:ro" \
-    mip-labeler --list-labels
+./mip-sdk-cli label list
 
-# Apply a sensitivity label to a text file
-docker run --rm --platform linux/amd64 \
-    -v "$(pwd)/labeler/.env:/app/.env:ro" \
-    -v "$(pwd)/sample_files:/data" \
-    mip-labeler --input /data/test_input.txt \
-    --output /data/test_labeled.txt \
-    --label-id <label-guid>
+# Apply a sensitivity label to a file
+./mip-sdk-cli label set --input test.docx --output labeled.docx --label-id <guid>
 
 # Read the label from a file
-docker run --rm --platform linux/amd64 \
-    -v "$(pwd)/labeler/.env:/app/.env:ro" \
-    -v "$(pwd)/sample_files:/data" \
-    mip-labeler --get-label /data/test_labeled.txt
+./mip-sdk-cli label get labeled.docx
 
 # Remove a label from a file
-docker run --rm --platform linux/amd64 \
-    -v "$(pwd)/labeler/.env:/app/.env:ro" \
-    -v "$(pwd)/sample_files:/data" \
-    mip-labeler --remove-label /data/test_labeled.txt \
-    --output /data/test_unlabeled.txt
+./mip-sdk-cli label remove --input labeled.docx --output clean.docx
+
+# Decrypt a protected file to stdout (in-memory — no file written to disk)
+./mip-sdk-cli label decrypt protected.docx > decrypted.docx
+
+# Use a specific .env file
+./mip-sdk-cli --env /path/to/.env label list
 ```
 
-When prompted, generate an OAuth2 access token using the displayed authority/resource values. You can use the MSAL PowerShell module or any MSAL-based tool:
+**Policy commands:**
 
-```powershell
-# PowerShell example
-$authority = "<authority-url>"
-$resourceUrl = "<resource-url>"
-$clientId = "<client-id>"
-$result = Get-MsalToken -ClientId $clientId -Authority $authority -Scopes "$resourceUrl/.default" -Interactive
-$result.AccessToken | Set-Clipboard
+```bash
+# List label policies
+./mip-sdk-cli policy list
+```
+
+**Docker usage:**
+
+```bash
+# List labels via Docker
+docker run --rm --platform linux/amd64 \
+    -v "$(pwd)/.env:/app/.env:ro" \
+    mip-sdk-cli label list
+
+# Apply a label via Docker
+docker run --rm --platform linux/amd64 \
+    -v "$(pwd)/.env:/app/.env:ro" \
+    -v "$(pwd)/sample_files:/data" \
+    mip-sdk-cli label set --input /data/test_clean.docx \
+    --output /data/test_labeled.docx --label-id <guid>
 ```
 
 ---
 
-## Part 2: Python Scanner (Graph processContent API)
+## Part 2: MCP Server (AI Assistant Integration)
+
+An [MCP (Model Context Protocol)](https://modelcontextprotocol.io/) server that lets AI assistants read MIP-protected documents. Decrypted content stays in memory — no unprotected file is ever written to disk.
+
+### Architecture
+
+```mermaid
+graph LR
+    A[AI Assistant<br>Copilot / Claude] -->|MCP stdio| B[MCP Server<br>Python]
+    B -->|subprocess| C[mip-sdk-cli<br>label decrypt]
+    C -->|Azure AD| D[Azure RMS<br>decrypt in memory]
+    C -->|raw bytes stdout| B
+    B -->|python-docx| E[Parse .docx<br>extract text]
+    B -->|text content| A
+```
+
+### Setup
+
+```bash
+# Install dependencies (Python 3.10+)
+pip install -r mcp-server/requirements.txt
+```
+
+### Tools
+
+| Tool | Input | Output |
+|------|-------|--------|
+| `list_labels` | — | All sensitivity labels in the organization |
+| `get_doc_label` | file path | Label name and ID applied to a file |
+| `read_protected_doc` | file path | Decrypted text content of a protected .docx |
+
+### VS Code Configuration
+
+Create `.vscode/mcp.json` in the workspace root:
+
+```json
+{
+  "servers": {
+    "mip-reader": {
+      "type": "stdio",
+      "command": "python3",
+      "args": ["${workspaceFolder}/mcp-server/server.py"]
+    }
+  }
+}
+```
+
+Then in VS Code:
+1. `Cmd+Shift+P` → **MCP: List Servers** → start **mip-reader**
+2. Open Copilot Chat in **Agent** mode
+3. Ask: *"Use the read_protected_doc tool to read my protected document"*
+
+### Security Model
+
+- **Identity**: The user email is locked to `USER_EMAIL` in `.env` — it is never accepted from the AI assistant, preventing impersonation.
+- **In-memory decryption**: The MIP SDK decrypts to a memory stream (`MemoryStream` class). No temp file is created.
+- **Audit**: The MIP SDK automatically logs all access events to the Microsoft Purview unified audit log. Verify in Purview portal → Audit.
+- **Permissions**: Uses `Content.DelegatedReader` for per-user access control, or `Content.SuperUser` for admin-level access.
+
+---
+
+## Part 3: Python Scanner (Graph processContent API)
 
 ### Setup
 
@@ -184,25 +266,92 @@ Sending processContent request to Microsoft Graph...
 
 ```bash
 # 0. Set up your credentials
-cp labeler/.env.sample labeler/.env
-# Edit labeler/.env with your CLIENT_ID, TENANT_ID, CLIENT_SECRET, USER_EMAIL
+cp .env.example .env
+# Edit .env with your CLIENT_ID, TENANT_ID, CLIENT_SECRET, USER_EMAIL
 
-# 1. Build the Docker image
-docker build --platform linux/amd64 -t mip-labeler -f labeler/Dockerfile .
+# 1. Build the CLI
+cd labeler/build
+cmake -DMIP_SDK_PATH=/path/to/mip_sdk -DCOMPILE_ONLY=OFF ..
+cmake --build .
 
-# 2. Label the test file
-docker run --rm --platform linux/amd64 \
-    -v "$(pwd)/labeler/.env:/app/.env:ro" \
-    -v "$(pwd)/sample_files:/data" \
-    mip-labeler --input /data/test_input.txt \
-    --output /data/test_labeled.txt \
+# 2. Label a file
+./mip-sdk-cli --env ../../.env label set \
+    --input ../../sample_files/test_clean.docx \
+    --output ../../sample_files/test_labeled.docx \
     --label-id <label-guid>
 
-# 3. Scan the labeled file with processContent
-cd scanner
+# 3. Read the label back
+./mip-sdk-cli --env ../../.env label get ../../sample_files/test_labeled.docx
+
+# 4. Scan the labeled file with processContent
+cd ../../scanner
 source .venv/bin/activate
-python scan_content.py --file ../sample_files/test_labeled.txt --env ../.env
+python scan_content.py --file ../sample_files/test_labeled.docx --env ../.env
 ```
+
+---
+
+## How Protection-Enabled Labels Work
+
+Sensitivity labels come in two types:
+
+| Label Type | Example | Behavior |
+|---|---|---|
+| **Metadata-only** | General, Confidential → Anyone (unrestricted) | Stamps label metadata into the file. No encryption. Anyone can open. |
+| **Protection-enabled** | Confidential → All Employees, Highly Confidential | Encrypts file content via Azure RMS. Only authorized users can open. |
+
+### Encryption Flow
+
+When you apply a protection-enabled label, encryption happens during `CommitAsync`:
+
+```mermaid
+sequenceDiagram
+    participant App as Labeler CLI
+    participant SDK as MIP File SDK
+    participant Sync as MIP Sync Service
+    participant RMS as Azure RMS
+
+    App->>SDK: SetLabel(labelId, PRIVILEGED)
+    Note over SDK: Label queued in memory<br/>(no encryption yet)
+
+    App->>SDK: CommitAsync(outputFile)
+    SDK->>Sync: Auth to syncservice.o365syncservice.com
+    Sync-->>SDK: Token granted
+    SDK->>Sync: Fetch label policy details
+    Sync-->>SDK: Label config (protection template, rights)
+
+    alt Label has protection enabled
+        SDK->>RMS: Auth to aadrm.com
+        RMS-->>SDK: Token granted
+        SDK->>RMS: Request publishing license (rights template)
+        RMS-->>SDK: Publishing license (encrypted key + rights)
+        Note over SDK: 1. Generate content key<br/>2. Encrypt file with AES-256<br/>3. Embed publishing license<br/>4. Write label metadata
+    else Metadata-only label
+        Note over SDK: Write label metadata only<br/>(no RMS call, no encryption)
+    end
+
+    SDK-->>App: Commit complete ✓
+```
+
+The second auth challenge to `aadrm.com` **only appears when the label includes protection**. For "unrestricted" labels, only the sync service call is made.
+
+### File Format Requirements
+
+- **`.docx`, `.xlsx`, `.pptx`, `.pdf`**: Support both metadata-only and protection-enabled labels
+- **`.txt` and other plain text**: Can only be labeled with protection (encryption) — metadata-only labels will fail because plain text has no metadata container
+
+### Required Permissions for Protection
+
+To apply protection-enabled labels, your app registration needs these **Application permissions** on `Azure Rights Management Services`:
+
+| Permission | Purpose |
+|---|---|
+| `Content.SuperUser` | Read all protected content in the tenant |
+| `Content.Writer` | Create protected content |
+| `Content.DelegatedWriter` | Create protected content on behalf of a user |
+| `Content.DelegatedReader` | Read protected content on behalf of a user |
+
+Without these permissions, applying a protection-enabled label will fail with `ServiceDisabledError`.
 
 ---
 
@@ -213,20 +362,25 @@ purview-mip-sdk-sample/
 ├── .env.example                          # Config template
 ├── .gitignore
 ├── README.md
-├── labeler/                              # C++ MIP SDK labeler
+├── labeler/                              # C++ MIP SDK CLI
 │   ├── CMakeLists.txt
+│   ├── Dockerfile
 │   └── src/
-│       ├── main.cpp                      # CLI entry point
+│       ├── main.cpp                      # CLI entry point (label/policy subcommands)
 │       ├── action.h / action.cpp         # MipContext → Profile → Engine → Handler
-│       ├── auth_delegate.h / .cpp        # OAuth2 token acquisition (stdin prompt)
+│       ├── memory_stream.h              # In-memory mip::Stream for decryption
+│       ├── auth_delegate.h / .cpp        # OAuth2 token acquisition (client credentials)
 │       ├── consent_delegate.h / .cpp     # Consent delegate (auto-accept)
 │       ├── profile_observer.h / .cpp     # FileProfile async observer
 │       └── file_handler_observer.h / .cpp# FileHandler async observer
+├── mcp-server/                           # MCP server for AI assistants
+│   ├── requirements.txt
+│   └── server.py                         # MCP tools: read_protected_doc, get_doc_label, list_labels
 ├── scanner/                              # Python Graph API scanner
 │   ├── requirements.txt
 │   └── scan_content.py                   # processContent API caller
 └── sample_files/
-    └── test_input.txt                    # Sample file with sensitive data patterns
+    └── test_clean.docx                   # Sample file for labeling
 ```
 
 ## References

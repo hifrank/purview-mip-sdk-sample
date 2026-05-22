@@ -12,7 +12,8 @@
 #>
 
 param(
-    [string]$AppId = "46946ac6-1560-4928-a748-1c4a353fce44",
+    [Parameter(Mandatory=$true)]
+    [string]$AppId,
     [string]$AppName = "MIP-SDK-Sample"
 )
 

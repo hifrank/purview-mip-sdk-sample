@@ -3,6 +3,7 @@
 #include "consent_delegate.h"
 #include "profile_observer.h"
 #include "file_handler_observer.h"
+#include "memory_stream.h"
 
 #include "mip/mip_configuration.h"
 #include "mip/file/labeling_options.h"
@@ -10,6 +11,7 @@
 
 #include <future>
 #include <iostream>
+#include <fstream>
 
 using std::cout;
 using std::endl;
@@ -104,6 +106,59 @@ void Action::ListLabels()
     cout << endl;
 }
 
+void Action::ListPolicies()
+{
+    cout << "\nLabel Policy Configuration\n";
+    cout << "==========================================\n";
+
+    // Default label
+    auto defaultLabel = mEngine->GetDefaultSensitivityLabel();
+    if (defaultLabel) {
+        cout << "Default label       : " << defaultLabel->GetName()
+             << " (" << defaultLabel->GetId() << ")" << endl;
+    } else {
+        cout << "Default label       : (none)" << endl;
+    }
+
+    // Policy file ID
+    cout << "Policy file ID      : " << mEngine->GetPolicyFileId() << endl;
+    cout << "Sensitivity file ID : " << mEngine->GetSensitivityFileId() << endl;
+
+    // More info URL
+    auto moreInfo = mEngine->GetMoreInfoUrl();
+    if (!moreInfo.empty()) {
+        cout << "More info URL       : " << moreInfo << endl;
+    }
+
+    // Label details
+    auto labels = mEngine->ListSensitivityLabels();
+    cout << "\nPublished Labels (" << labels.size() << "):\n";
+    cout << "------------------------------------------\n";
+
+    for (const auto& label : labels) {
+        cout << "\n  " << label->GetName() << " [" << label->GetId() << "]\n";
+        cout << "    Active      : " << (label->IsActive() ? "yes" : "no") << endl;
+        cout << "    Sensitivity : " << label->GetSensitivity() << endl;
+        if (!label->GetDescription().empty())
+            cout << "    Description : " << label->GetDescription() << endl;
+        if (!label->GetColor().empty())
+            cout << "    Color       : " << label->GetColor() << endl;
+        if (!label->GetTooltip().empty())
+            cout << "    Tooltip     : " << label->GetTooltip() << endl;
+
+        for (const auto& child : label->GetChildren()) {
+            cout << "\n    -> " << child->GetName() << " [" << child->GetId() << "]\n";
+            cout << "       Active      : " << (child->IsActive() ? "yes" : "no") << endl;
+            cout << "       Sensitivity : " << child->GetSensitivity() << endl;
+            if (!child->GetDescription().empty())
+                cout << "       Description : " << child->GetDescription() << endl;
+            if (!child->GetTooltip().empty())
+                cout << "       Tooltip     : " << child->GetTooltip() << endl;
+        }
+    }
+    cout << endl;
+}
+
 std::shared_ptr<mip::FileHandler> Action::CreateFileHandler(const string& filePath)
 {
     auto handlerPromise = make_shared<std::promise<shared_ptr<mip::FileHandler>>>();
@@ -189,5 +244,43 @@ void Action::RemoveLabel(const string& inputFilePath,
         cout << "Label removed. Output: " << outputFilePath << endl;
     } else {
         std::cerr << "Failed to remove label from: " << outputFilePath << endl;
+    }
+}
+
+void Action::DecryptToStdout(const string& filePath)
+{
+    auto handler = CreateFileHandler(filePath);
+
+    // Check if the file is protected
+    auto protection = handler->GetProtection();
+    if (!protection) {
+        // Not protected — read the raw file and write to stdout
+        std::ifstream in(filePath, std::ios::binary);
+        if (!in) {
+            std::cerr << "Error: Cannot open file: " << filePath << endl;
+            return;
+        }
+        std::cout << in.rdbuf();
+        return;
+    }
+
+    std::cerr << "File is protected. Decrypting in memory..." << endl;
+
+    // Remove protection and commit to an in-memory stream
+    handler->RemoveProtection();
+
+    auto memStream = make_shared<MemoryStream>();
+    auto commitPromise = make_shared<std::promise<bool>>();
+    auto commitFuture = commitPromise->get_future();
+
+    handler->CommitAsync(memStream, commitPromise);
+
+    if (commitFuture.get()) {
+        const auto& data = memStream->Data();
+        std::cout.write(reinterpret_cast<const char*>(data.data()),
+                        static_cast<std::streamsize>(data.size()));
+        std::cerr << "Decrypted " << data.size() << " bytes to stdout." << endl;
+    } else {
+        std::cerr << "Failed to decrypt file: " << filePath << endl;
     }
 }

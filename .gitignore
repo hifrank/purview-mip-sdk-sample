@@ -27,6 +27,13 @@ mip_data/
 .DS_Store
 ~$*
 
+# Python version
+.python-version
+
+# Generated sample outputs
+sample_files/*_output*
+sample_files/*_protected*
+
 # IDE
 .vscode/
 .idea/

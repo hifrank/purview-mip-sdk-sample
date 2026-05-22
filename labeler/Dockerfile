@@ -51,10 +51,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Copy built binary and MIP SDK shared libraries
-COPY --from=builder /build/out/labeler /app/labeler
+COPY --from=builder /build/out/mip-sdk-cli /app/mip-sdk-cli
 COPY --from=builder /build/out/*.so* /app/
 
 # Add /app to library search path
 ENV LD_LIBRARY_PATH=/app
 
-ENTRYPOINT ["/app/labeler"]
+ENTRYPOINT ["/app/mip-sdk-cli"]

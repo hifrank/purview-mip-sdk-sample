@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(mip-file-labeler LANGUAGES CXX)
+project(mip-sdk-cli LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -66,17 +66,17 @@ set(SOURCES
 
 if(COMPILE_ONLY)
     # Compile-only mode: build object library to verify code compiles against headers
-    add_library(labeler_objs OBJECT ${SOURCES})
-    target_include_directories(labeler_objs PRIVATE ${MIP_INCLUDE_DIRS} src/)
+    add_library(mip_sdk_cli_objs OBJECT ${SOURCES})
+    target_include_directories(mip_sdk_cli_objs PRIVATE ${MIP_INCLUDE_DIRS} src/)
     message(STATUS "COMPILE_ONLY mode: will verify compilation without linking")
 else()
-    add_executable(labeler ${SOURCES})
+    add_executable(mip-sdk-cli ${SOURCES})
 
-    target_include_directories(labeler PRIVATE ${MIP_INCLUDE_DIRS} src/)
-    target_link_directories(labeler PRIVATE ${MIP_LIB_DIR})
+    target_include_directories(mip-sdk-cli PRIVATE ${MIP_INCLUDE_DIRS} src/)
+    target_link_directories(mip-sdk-cli PRIVATE ${MIP_LIB_DIR})
 
     # Link MIP SDK libraries
-    target_link_libraries(labeler PRIVATE
+    target_link_libraries(mip-sdk-cli PRIVATE
         mip_file_sdk
         mip_upe_sdk
         mip_protection_sdk
@@ -87,7 +87,7 @@ else()
         find_package(CURL REQUIRED)
         find_package(OpenSSL REQUIRED)
         find_package(PkgConfig)
-        target_link_libraries(labeler PRIVATE
+        target_link_libraries(mip-sdk-cli PRIVATE
             CURL::libcurl
             OpenSSL::SSL
             OpenSSL::Crypto
@@ -96,10 +96,10 @@ else()
             pkg_check_modules(GSF IMPORTED_TARGET libgsf-1)
             pkg_check_modules(GMIME IMPORTED_TARGET gmime-3.0)
             if(GSF_FOUND)
-                target_link_libraries(labeler PRIVATE PkgConfig::GSF)
+                target_link_libraries(mip-sdk-cli PRIVATE PkgConfig::GSF)
             endif()
             if(GMIME_FOUND)
-                target_link_libraries(labeler PRIVATE PkgConfig::GMIME)
+                target_link_libraries(mip-sdk-cli PRIVATE PkgConfig::GMIME)
             endif()
         endif()
     endif()
@@ -115,8 +115,8 @@ else()
 
     file(GLOB MIP_SHARED_LIBS ${MIP_DYLIB_GLOB})
     foreach(lib ${MIP_SHARED_LIBS})
-        add_custom_command(TARGET labeler POST_BUILD
-            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${lib} $<TARGET_FILE_DIR:labeler>
+        add_custom_command(TARGET mip-sdk-cli POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different ${lib} $<TARGET_FILE_DIR:mip-sdk-cli>
         )
     endforeach()
 endif()
