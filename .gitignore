@@ -1,0 +1,32 @@
+# Environment
+.env
+
+# C++ build
+labeler/build/
+*.o
+*.d
+*.dylib
+*.so
+*.zip
+
+# MIP SDK (downloaded)
+mip_sdk/
+
+# .NET build artifacts
+labeler-dotnet/
+
+# Python
+scanner/__pycache__/
+scanner/*.pyc
+scanner/.venv/
+
+# MIP SDK cache
+mip_data/
+
+# OS
+.DS_Store
+~$*
+
+# IDE
+.vscode/
+.idea/

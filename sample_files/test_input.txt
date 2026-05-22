@@ -1,0 +1,16 @@
+CONFIDENTIAL - Employee Record
+
+Name: Alex Wilber
+Department: Finance
+Position: Senior Analyst
+
+Social Security Number: 120-98-1437
+Credit Card Number: 4532-6677-8521-3500
+Bank Account: 9283746510
+
+Home Address:
+One Microsoft Way
+Redmond, WA 98052
+
+This document contains sensitive personal and financial information.
+Unauthorized disclosure is strictly prohibited.
