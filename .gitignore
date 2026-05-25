@@ -37,3 +37,4 @@ sample_files/*_protected*
 # IDE
 .vscode/
 .idea/
+__pycache__/

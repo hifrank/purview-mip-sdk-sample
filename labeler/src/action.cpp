@@ -195,6 +195,7 @@ void Action::SetLabel(const string& inputFilePath,
 
     if (commitFuture.get()) {
         cout << "Label committed to file: " << outputFilePath << endl;
+        handler->NotifyCommitSuccessful(inputFilePath);
     } else {
         std::cerr << "Failed to label: " << outputFilePath << endl;
     }
@@ -242,6 +243,7 @@ void Action::RemoveLabel(const string& inputFilePath,
 
     if (commitFuture.get()) {
         cout << "Label removed. Output: " << outputFilePath << endl;
+        handler->NotifyCommitSuccessful(inputFilePath);
     } else {
         std::cerr << "Failed to remove label from: " << outputFilePath << endl;
     }
@@ -280,6 +282,7 @@ void Action::DecryptToStdout(const string& filePath)
         std::cout.write(reinterpret_cast<const char*>(data.data()),
                         static_cast<std::streamsize>(data.size()));
         std::cerr << "Decrypted " << data.size() << " bytes to stdout." << endl;
+        handler->NotifyCommitSuccessful(filePath);
     } else {
         std::cerr << "Failed to decrypt file: " << filePath << endl;
     }

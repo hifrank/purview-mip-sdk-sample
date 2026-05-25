@@ -18,6 +18,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+import fitz  # pymupdf
 from docx import Document
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
@@ -70,6 +71,17 @@ def _extract_text_from_docx(data: bytes) -> str:
     return "\n".join(paragraphs)
 
 
+def _extract_text_from_pdf(data: bytes) -> str:
+    """Parse PDF bytes in memory and return all text content."""
+    doc = fitz.open(stream=data, filetype="pdf")
+    pages = []
+    for page in doc:
+        text = page.get_text().strip()
+        if text:
+            pages.append(text)
+    return "\n\n".join(pages)
+
+
 # ── MCP Server ──────────────────────────────────────────────────────
 
 mcp = FastMCP(
@@ -79,14 +91,16 @@ mcp = FastMCP(
 
 @mcp.tool()
 def read_protected_doc(file_path: str) -> str:
-    """Read text content from a sensitivity-labeled or protected .docx file.
+    """Read text content from a sensitivity-labeled or protected document.
+
+    Supported formats: .docx, .pdf
 
     The file is decrypted in memory only — no unprotected copy is ever
     written to disk.  The caller's identity is determined by server
     configuration, not by this parameter.
 
     Args:
-        file_path: Absolute path to the .docx file.
+        file_path: Absolute path to the document file.
 
     Returns:
         The extracted text content of the document.
@@ -117,6 +131,11 @@ def read_protected_doc(file_path: str) -> str:
             return _extract_text_from_docx(raw_bytes)
         except Exception as e:
             return f"Error parsing .docx: {e}"
+    elif suffix == ".pdf":
+        try:
+            return _extract_text_from_pdf(raw_bytes)
+        except Exception as e:
+            return f"Error parsing .pdf: {e}"
     else:
         return f"Text extraction for {suffix} is not yet implemented. Decrypted {len(raw_bytes)} bytes."
 

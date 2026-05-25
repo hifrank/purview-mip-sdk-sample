@@ -355,6 +355,73 @@ Without these permissions, applying a protection-enabled label will fail with `S
 
 ---
 
+## Audit Logging
+
+The MIP SDK can send audit events to the [Microsoft Purview unified audit log](https://learn.microsoft.com/en-us/purview/audit-new-search). This is **not enabled by default** — two steps are required:
+
+### 1. Enable Audit in the Label Policy (one-time, tenant-wide)
+
+```powershell
+# Connect to Security & Compliance PowerShell
+Import-Module ExchangeOnlineManagement
+Connect-IPPSSession
+
+# Enable audit on your label policy (find the name with Get-LabelPolicy)
+Set-LabelPolicy -Identity "Global sensitivity label policy" -AdvancedSettings @{EnableAudit="True"}
+
+# Verify
+(Get-LabelPolicy -Identity "Global sensitivity label policy").Settings
+# Should include: [enableaudit, True]
+```
+
+Or use the provided script:
+
+```bash
+pwsh -File scripts/enable_audit.ps1
+```
+
+> **Note:** This setting takes 15–60 minutes to propagate to MIP SDK clients.
+
+### 2. Code-Level Audit Hooks (already implemented)
+
+The CLI already has all required audit hooks:
+
+| Hook | Location | Audit Event Type |
+|------|----------|-----------------|
+| `AuditDiscoveryEnabled = true` | `CreateFileHandlerAsync()` | **AipDiscover** — fired on `GetLabel()` |
+| `NotifyCommitSuccessful()` | After `SetLabel` commit | **AipSensitivityLabelAction** |
+| `NotifyCommitSuccessful()` | After `RemoveLabel` commit | **AipSensitivityLabelAction** |
+| `NotifyCommitSuccessful()` | After `Decrypt` commit | **AipProtectionAction** |
+| *(automatic)* | On SDK init | **AipHeartBeat** |
+
+### 3. Verify Audit Events
+
+Search the unified audit log in the [Purview compliance portal](https://compliance.microsoft.com/auditlogsearch) or via PowerShell:
+
+```powershell
+pwsh -File scripts/search_audit_log.ps1
+```
+
+Or manually:
+
+```powershell
+Connect-IPPSSession
+
+# Search for MIP events in the last 24 hours
+$end = Get-Date
+$start = $end.AddHours(-24)
+
+Search-UnifiedAuditLog -StartDate $start -EndDate $end -RecordType AipDiscover -ResultSize 10
+Search-UnifiedAuditLog -StartDate $start -EndDate $end -RecordType AipSensitivityLabelAction -ResultSize 10
+Search-UnifiedAuditLog -StartDate $start -EndDate $end -RecordType AipHeartBeat -ResultSize 10
+```
+
+> **Troubleshooting:** If no events appear, ensure unified auditing is turned on for your tenant. Check for a "Start recording user and admin activity" banner at [compliance.microsoft.com/auditlogsearch](https://compliance.microsoft.com/auditlogsearch).
+
+For more details, see [Auditing in the MIP File SDK](https://learn.microsoft.com/en-us/information-protection/develop/concept-auditing-file-cpp).
+
+---
+
 ## Project Structure
 
 ```
@@ -379,6 +446,13 @@ purview-mip-sdk-sample/
 ├── scanner/                              # Python Graph API scanner
 │   ├── requirements.txt
 │   └── scan_content.py                   # processContent API caller
+├── scripts/
+│   ├── enable_audit.ps1                  # Enable audit logging on label policy
+│   ├── search_audit_log.ps1              # Query unified audit log for MIP events
+│   ├── setup_dlp_policy.ps1              # Create DLP policy for testing
+│   └── prepare_mip_sdk.sh               # Download and extract MIP SDK
+├── docs/
+│   └── mcp-scenario.md                   # Scenario walkthrough with diagrams
 └── sample_files/
     └── test_clean.docx                   # Sample file for labeling
 ```
