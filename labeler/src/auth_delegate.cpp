@@ -88,7 +88,7 @@ bool AuthDelegateImpl::AcquireOAuth2Token(
     // Client credentials mode
     if (!mClientSecret.empty() && !mTenantId.empty()) {
         string newToken;
-        cout << "  Auth challenge:\n"
+        std::cerr << "  Auth challenge:\n"
              << "    Authority: " << authority << "\n"
              << "    Resource : " << resource << "\n";
         if (AcquireTokenClientCredentials(authority, resource, newToken)) {
@@ -96,7 +96,7 @@ bool AuthDelegateImpl::AcquireOAuth2Token(
             mAuthority = authority;
             mResource = resource;
             token.SetAccessToken(mToken);
-            cout << "  Token acquired via client credentials.\n";
+            std::cerr << "  Token acquired via client credentials.\n";
             return true;
         }
         std::cerr << "Client credentials token acquisition failed.\n";

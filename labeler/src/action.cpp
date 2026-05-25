@@ -77,7 +77,7 @@ Action::Action(const string& appId,
     mProfile->AddEngineAsync(engineSettings, enginePromise);
     mEngine = engineFuture.get();
 
-    cout << "MIP SDK initialized successfully for user: " << userName << endl;
+    std::cerr << "MIP SDK initialized successfully for user: " << userName << endl;
 }
 
 Action::~Action()
