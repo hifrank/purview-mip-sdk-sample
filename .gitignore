@@ -32,7 +32,6 @@ mip_data/
 
 # Generated sample outputs
 sample_files/*_output*
-sample_files/*_protected*
 
 # IDE
 .vscode/
