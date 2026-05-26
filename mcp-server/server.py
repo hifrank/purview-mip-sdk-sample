@@ -21,6 +21,8 @@ from pathlib import Path
 import fitz  # pymupdf
 from docx import Document
 from dotenv import load_dotenv
+from openpyxl import load_workbook
+from pptx import Presentation
 from mcp.server.fastmcp import FastMCP
 
 # ── Configuration ───────────────────────────────────────────────────
@@ -82,6 +84,39 @@ def _extract_text_from_pdf(data: bytes) -> str:
     return "\n\n".join(pages)
 
 
+def _extract_text_from_pptx(data: bytes) -> str:
+    """Parse .pptx bytes in memory and return all slide text."""
+    prs = Presentation(io.BytesIO(data))
+    slides = []
+    for i, slide in enumerate(prs.slides, 1):
+        texts = []
+        for shape in slide.shapes:
+            if shape.has_text_frame:
+                for para in shape.text_frame.paragraphs:
+                    if para.text.strip():
+                        texts.append(para.text)
+        if texts:
+            slides.append(f"--- Slide {i} ---\n" + "\n".join(texts))
+    return "\n\n".join(slides)
+
+
+def _extract_text_from_xlsx(data: bytes) -> str:
+    """Parse .xlsx bytes in memory and return all cell text."""
+    wb = load_workbook(io.BytesIO(data), read_only=True, data_only=True)
+    sheets = []
+    for name in wb.sheetnames:
+        ws = wb[name]
+        rows = []
+        for row in ws.iter_rows(values_only=True):
+            cells = [str(c) if c is not None else "" for c in row]
+            if any(cells):
+                rows.append("\t".join(cells))
+        if rows:
+            sheets.append(f"--- Sheet: {name} ---\n" + "\n".join(rows))
+    wb.close()
+    return "\n\n".join(sheets)
+
+
 # ── MCP Server ──────────────────────────────────────────────────────
 
 mcp = FastMCP(
@@ -93,7 +128,7 @@ mcp = FastMCP(
 def read_protected_doc(file_path: str) -> str:
     """Read text content from a sensitivity-labeled or protected document.
 
-    Supported formats: .docx, .pdf
+    Supported formats: .docx, .pdf, .pptx, .xlsx
 
     The file is decrypted in memory only — no unprotected copy is ever
     written to disk.  The caller's identity is determined by server
@@ -136,6 +171,16 @@ def read_protected_doc(file_path: str) -> str:
             return _extract_text_from_pdf(raw_bytes)
         except Exception as e:
             return f"Error parsing .pdf: {e}"
+    elif suffix == ".pptx":
+        try:
+            return _extract_text_from_pptx(raw_bytes)
+        except Exception as e:
+            return f"Error parsing .pptx: {e}"
+    elif suffix == ".xlsx":
+        try:
+            return _extract_text_from_xlsx(raw_bytes)
+        except Exception as e:
+            return f"Error parsing .xlsx: {e}"
     else:
         return f"Text extraction for {suffix} is not yet implemented. Decrypted {len(raw_bytes)} bytes."
 
